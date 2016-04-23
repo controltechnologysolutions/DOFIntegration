@@ -1,72 +1,85 @@
 package com.controltechnologysolutions.dof.integration;
 
+import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 import org.opendof.core.oal.DOFObjectID;
-import org.opendof.core.oal.DOFValue;
 import org.opendof.datatransfer.DetailRequestStatus;
 import org.opendof.datatransfer.ValueSet;
+import org.opendof.datatransfer.ValueSet.Row;
 import org.opendof.datatransfer.sink.Sink;
 import org.opendof.datatransfer.sink.ValueSetListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.controltechnologysolutions.dof.integration.dto.Device;
+import com.controltechnologysolutions.dof.integration.dto.DeviceValue;
+import com.controltechnologysolutions.dof.integration.dto.MessageDeliverCache;
+import com.controltechnologysolutions.dof.integration.ex.CTSIntegrationException;
+import com.controltechnologysolutions.dof.integration.helper.IntegrationDataSource;
+import com.controltechnologysolutions.dof.integration.helper.PersistenceHelper;
+import com.controltechnologysolutions.dof.integration.helper.ValueRowParser;
+
 public class DOFIntegrationValueSetListener implements ValueSetListener {
 	private static final Logger LOG = LoggerFactory.getLogger(DOFIntegrationValueSetListener.class);
 
 	public void persistValueSet(Sink sink, DOFObjectID sourceID, ValueSet valueSet) throws Exception {
-		String sourceIDString = sourceID.getDataString();
-		DOFObjectID deviceID = valueSet.getDeviceID();
-		Date firstTime = valueSet.getFirstTime();
-		Date lastTime = valueSet.getLastTime();
-		DOFObjectID parentID = valueSet.getParentID();
-		Integer topologyPosition = valueSet.getPosition();
-		int quantum = valueSet.getTimeQuantum();
-		LOG.info("Received value set from source ID: {}", sourceIDString);
-		LOG.info("Value set is for device ID: {}", deviceID.toStandardString());
-		if (parentID != null) { // It is possible that the parent is null
-			LOG.info("Value set device has parent ID: {}", parentID.toStandardString());
-		} else {
-			LOG.info("Value set device has no parent");
-		}
+		Connection conn = null;
+		try {
+			String sourceIDString = sourceID.getDataString();
+			LOG.info("Received value set from source ID: {}", sourceIDString);
 
-		if (topologyPosition != null) { // It is possible that the position is null
-			LOG.info("Value set is in topology position: {}", topologyPosition);
-		} else {
-			LOG.info("Value set has no topology position");
-		}
+			DOFObjectID deviceID = valueSet.getDeviceID();
+			String deviceIDString = deviceID.toStandardString();
 
-		LOG.info("Value set first time: {}", firstTime.toString());
-		LOG.info("Value set last time: {}", lastTime.toString());
-		LOG.info("Value set time quantum: {}", quantum);
-		LOG.info("Value set row count: {}", valueSet.getRowCount());
-        
-        ValueSet.Definition.Property[] properties = valueSet.getDefinition().getProperties();
-        
-        for(int i = 0; i < properties.length; i++) {
-        	ValueSet.Definition.Property prop = properties[i];
-        	if(prop == null){
-        		continue;
-        	}
-        	LOG.info("Prop type: {}", prop.getType());
-        	LOG.info("Prop item id: {}", prop.getItemID());
-        	LOG.info("Prop agreggation: {}", prop.getAggregation());
-        	LOG.info("Prop interface id: {}", prop.getInterfaceID());
-        }
-        
-        for(ValueSet.Row row : valueSet.getRows()){
-        	LOG.info("   ValueSet Row timestamp: {}", row.getTimestamp());
-        	//Parse the valueSet data
-            DOFValue[] values = row.getValues(); 
-            LOG.info("   ValueSet Row contains the following known data:");
-            for(int i = 0; i < values.length; i++) {
-            	DOFValue value = values[i];
-	        	if(value == null){
-	        		continue;
-	        	}
-	        	LOG.info("Value type: {}", value.getDOFType());
-	        }
-        }
+			MessageDeliverCache cache = new MessageDeliverCache();
+			cache.setDeviceID(deviceIDString);
+			cache.setStart(valueSet.getFirstTime().getTime());
+			cache.setEnd(valueSet.getLastTime().getTime());
+
+			conn = IntegrationDataSource.getConnection();
+
+			// verify duplicate message
+			if (PersistenceHelper.verifyMessageDelivered(cache, conn)) {
+				return;
+			}
+
+			// parse device
+			Device device = new Device();
+			device.setDeviceID(deviceIDString);
+			DOFObjectID parentID = valueSet.getParentID();
+			if (parentID != null) {
+				device.setParentDeviceID(parentID.toStandardString());
+			}
+			device.setQuantum(valueSet.getTimeQuantum());
+			device.setPosition(valueSet.getPosition());
+
+			// parse values
+			ValueSet.Definition.Property[] properties = valueSet.getDefinition().getProperties();
+			List<DeviceValue> deviceValues = new ArrayList<DeviceValue>();
+			List<Row> rows = valueSet.getRows();
+			LOG.info("{} row received.", rows.size());
+			for (ValueSet.Row row : rows) {
+				deviceValues.addAll(ValueRowParser.parseRow(deviceIDString, row, properties));
+			}
+
+			// persist data
+			PersistenceHelper.save(device, cache, deviceValues, conn);
+		} catch (Exception e) {
+			String msg = "Failed to parse ValueSet on " + new Date() + ".";
+			throw new CTSIntegrationException(msg, e);
+		} finally {
+			if(conn == null){
+				return;
+			}
+			try {
+				conn.close();
+			} catch (Exception e2) {
+				// nothing to do
+			}
+		}
 	}
 
 	public void requestComplete(Sink sink, long requestID, DetailRequestStatus status) throws Exception {
@@ -75,5 +88,8 @@ public class DOFIntegrationValueSetListener implements ValueSetListener {
 	}
 
 	public void valueSetsRemaining(Sink sink, DOFObjectID source, long remaining) {
+		if (remaining > 25) {
+			LOG.warn("{} messages remaining from source {}!", remaining, source);
+		}
 	}
 }

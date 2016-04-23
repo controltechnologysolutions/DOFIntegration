@@ -1,11 +1,12 @@
 package com.controltechnologysolutions.dof.integration;
 
-import java.io.File;
-import java.net.URL;
+import java.io.InputStream;
 
 import org.opendof.core.ReconnectingStateListener;
 import org.opendof.core.oal.DOF;
 import org.opendof.core.oal.DOF.SecurityDesire;
+import org.opendof.core.oal.DOFObjectID.Authentication;
+import org.opendof.core.oal.DOFObjectID.Domain;
 import org.opendof.core.oal.DOFAddress;
 import org.opendof.core.oal.DOFConnection;
 import org.opendof.core.oal.DOFCredentials;
@@ -20,9 +21,9 @@ import org.slf4j.LoggerFactory;
 
 public class DOFAbstraction {
 	private static final Logger LOG = LoggerFactory.getLogger(DOFAbstraction.class);
-	
+
 	public static final ReconnectingStateListener RECONECT_LISTENER = new ReconnectingStateListener();
-	
+
 	/**
 	 * @return
 	 */
@@ -34,33 +35,49 @@ public class DOFAbstraction {
 	}
 
 	/**
-	 * @param path The credential file path.
+	 * @param path
+	 *            The credential file path.
 	 * @return
 	 */
 	public static DOFCredentials createCredential(String path) {
+		return innerCreateCredential(path);
+		// return createCredentialTest();
+	}
+
+	private static DOFCredentials innerCreateCredential(String path) {
 		LOG.info("Creating credential for file {}...", path);
 		try {
-			URL credentialUrl = DOFAbstraction.class.getResource(path);
-			File credentialFile = new File(credentialUrl.toURI());
+			InputStream stream = DOFAbstraction.class.getResourceAsStream(path);
 			LOG.info("Credential Created");
-			return DOFCredentials.create(credentialFile);
+			return DOFCredentials.create(stream);
 		} catch (Throwable t) {
 			LOG.error("Fail to create the credential.", t);
 			return null;
 		}
 	}
 
+	private static DOFCredentials createCredentialTest() {
+		byte[] key = new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0 };
+		Domain domainOID = DOFObjectID.Domain.create("[6:example.opendof.org]");
+		Authentication proxyAuthentication = DOFObjectID.Authentication.create("[3:sink@example.opendof.org]");
+		return DOFCredentials.Key.create(domainOID, proxyAuthentication, key);
+	}
+
 	/**
 	 * @param dof
 	 * @param address
 	 * @param credential
-	 * @param maxSilence The value that represents the maximum allowed silence on a connection.
+	 * @param maxSilence
+	 *            The value that represents the maximum allowed silence on a
+	 *            connection.
 	 * @param connectionTimeout
 	 * @return
 	 */
-	public static DOFConnection createConnection(DOF dof, DOFAddress address, DOFCredentials credential, int maxSilence, int connectionTimeout) {
+	public static DOFConnection createConnection(DOF dof, DOFAddress address, DOFCredentials credential, int maxSilence,
+			int connectionTimeout) {
 		LOG.info("Creating the connection to {}...", address);
-		
+
 		DOFConnection.Config myConnectionConfig = new DOFConnection.Config//
 				.BuilderSecureStream(address, credential)//
 						.setSecurityDesire(SecurityDesire.SECURE)//
@@ -81,7 +98,7 @@ public class DOFAbstraction {
 		connection.addStateListener(RECONECT_LISTENER);
 		return connection;
 	}
-	
+
 	/**
 	 * @param dof
 	 * @param credential
@@ -92,7 +109,7 @@ public class DOFAbstraction {
 		LOG.info("Creating DOF system with timeout of {}ms...", creationTimeout);
 		DOFSystem.Config systemConfig = new DOFSystem.Config.BuilderSecure(credential).setName("Test System").build();
 
-		DOFSystem dofSystem = null;		
+		DOFSystem dofSystem = null;
 		try {
 			dofSystem = dof.createSystem(systemConfig, creationTimeout);
 		} catch (DOFAuthenticationFailedException afx) {
@@ -107,9 +124,9 @@ public class DOFAbstraction {
 		}
 
 		LOG.info("DOF System created.");
-		return dofSystem;		
+		return dofSystem;
 	}
-	
+
 	/**
 	 * @param sinkId
 	 * @param dofSystem
@@ -118,21 +135,21 @@ public class DOFAbstraction {
 	 */
 	public static Sink createSink(String sinkId, DOFSystem dofSystem, int operationTimeout) {
 		LOG.info("Creating sink for ID {} and operation timeout of {}ms...", sinkId, operationTimeout);
-		
+
 		Sink sink = null;
-		try{
+		try {
 			DOFObjectID sinkID = DOFObjectID.create(sinkId);
 			Sink.Config sinkConfig = new Sink.Config.Builder(dofSystem, sinkID, new DataTransferStatusListener())
-					.setInstanceID(Sink.Config.Builder.generateInstanceID())
-					.setOperationTimeout(operationTimeout)
-					.setValueSetListener(new DOFIntegrationValueSetListener()).build();
+					.setInstanceID(Sink.Config.Builder.generateInstanceID()).setOperationTimeout(operationTimeout)
+					.setValueSetListener(new DOFIntegrationValueSetListener())
+					.setTopologyListener(new DOFIntegrationTopologyListener()).build();
 			sink = Sink.create(sinkConfig);
-			LOG.info("Sink created.");	
-        } catch (Exception e) {
-        	LOG.error("Unable to create sink", e);
-        	return null;
-        }
-		
+			LOG.info("Sink created.");
+		} catch (Exception e) {
+			LOG.error("Unable to create sink", e);
+			return null;
+		}
+
 		return sink;
 	}
 }

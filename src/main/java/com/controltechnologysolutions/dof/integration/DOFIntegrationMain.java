@@ -14,15 +14,20 @@ import org.opendof.datatransfer.sink.Sink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.controltechnologysolutions.dof.integration.helper.IntegrationDataSource;
+
 public class DOFIntegrationMain {
 	private static final Logger LOG = LoggerFactory.getLogger(DOFIntegrationMain.class);
-	
+
 	public static final String CREDENTIAL_PATH = "/sink-cts.cred";
 	public static final DOFAddress ADDRESS = InetTransport.createAddress("dsp.emit-networking.org", 3567);
+	// public static final DOFAddress ADDRESS =
+	// InetTransport.createAddress("localhost", 3567);
 	public static final int MAX_SILENCE = 45 * 1000; // 45s
 	public static final int CONNECTION_TIMEOUT = 60 * 1000; // 60s
 	public static final int SYSTEM_CREATION_TIMEOUT = 60 * 1000; // 60s
-	public static final String SINK_ID = "[129:4003/stage/sink-cts]";
+	public static final String SINK_ID = "[129:4003/sink-cts]";
+	// public static final String SINK_ID = "[3:sink@example.opendof.org]";
 	public static final int SINK_OPERATION_TIMEOUT = 60 * 1000; // 60s
 
 	private static DOF dof;
@@ -33,6 +38,11 @@ public class DOFIntegrationMain {
 
 	public static void main(String[] args) {
 		LOG.info("Initing DOF Integration...");
+
+		if (!IntegrationDataSource.startup()) {
+			destroy();
+			return;
+		}
 
 		dof = DOFAbstraction.createDOF();
 
@@ -53,22 +63,22 @@ public class DOFIntegrationMain {
 			destroy();
 			return;
 		}
-		dofSystem.addStateListener(new DOFSystem.StateListener(){
+		dofSystem.addStateListener(new DOFSystem.StateListener() {
 			public void removed(DOFSystem system, DOFException ex) {
-				
+
 			}
 
 			public void stateChanged(DOFSystem system, State state) {
-				if(!state.isAuthorized()){
+				if (!state.isAuthorized()) {
 					LOG.error("System not authorized.");
 					return;
 				}
-				
+
 				LOG.info("System authorized.");
-				if(sink != null){
+				if (sink != null) {
 					return;
 				}
-				
+
 				sink = DOFAbstraction.createSink(SINK_ID, system, SINK_OPERATION_TIMEOUT);
 			}
 		});
@@ -81,9 +91,9 @@ public class DOFIntegrationMain {
 	}
 
 	private static void destroy() {
-		if(sink != null){
+		if (sink != null) {
 			sink.close();
-			LOG.info("Sink Closed.");		
+			LOG.info("Sink Closed.");
 		}
 		DOFAbstraction.RECONECT_LISTENER.cancel();
 		LOG.info("Reconnection Canceled.");
@@ -95,7 +105,10 @@ public class DOFIntegrationMain {
 			connection.destroy();
 			LOG.info("Connection destroyed.");
 		}
-		dof.destroy();
-		LOG.info("DOF destroyed.");
+		if (dof != null) {
+			dof.destroy();
+			LOG.info("DOF destroyed.");
+		}
+		IntegrationDataSource.close();
 	}
 }

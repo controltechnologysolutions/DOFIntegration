@@ -11,7 +11,7 @@ public class DataTransferStatusListener implements StatusListener{
 	private static final Logger LOG = LoggerFactory.getLogger(DataTransferStatusListener.class);
 
 	public void statusChanged(StatusLevel severity, Date timestamp, String message, Exception ex) {
-		if (severity.compareTo(StatusLevel.ERROR) >= 0) {
+		if (severity.getValue() >= StatusLevel.ERROR.getValue()) {
 			if(ex != null){
 				LOG.error(message, ex);
 			}
