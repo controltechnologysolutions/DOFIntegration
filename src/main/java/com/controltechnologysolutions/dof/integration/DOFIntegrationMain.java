@@ -20,7 +20,7 @@ public class DOFIntegrationMain {
 	private static final Logger LOG = LoggerFactory.getLogger(DOFIntegrationMain.class);
 
 	public static final String CREDENTIAL_PATH = "/sink-cts.cred";
-	public static final DOFAddress ADDRESS = InetTransport.createAddress("dsp.emit-networking.org", 3567);
+	public static final DOFAddress ADDRESS = InetTransport.createAddress("solar.sparc.pslcl.com", 3567);
 	// public static final DOFAddress ADDRESS =
 	// InetTransport.createAddress("localhost", 3567);
 	public static final int MAX_SILENCE = 45 * 1000; // 45s
